@@ -13,23 +13,32 @@
   <p class="mb-6 text-gray-500 text-sm">HTML/JS version repo: <a href="https://github.com/nivoset/stilwell-mind" class="underline text-blue-700 hover:text-blue-900" target="_blank" rel="noopener">nivoset/stilwell-mind</a></p>
 
   <div class="mb-4 flex flex-col items-center">
-    <b>Draw input:</b>
-    <canvas id="draw-canvas" width="200" height="200" class="border border-gray-400 rounded bg-white mt-2 mb-2 touch-none" style="touch-action:none;"></canvas>
-    <button id="reset-btn" class="mb-2 px-4 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition">Reset</button>
-    <div id="retina-container" class="hidden flex-col items-center w-full">
-      <b>Retina input:</b>
-      <div id="retina" class="grid grid-cols-5 gap-2 mt-2"></div>
+    <div class="flex flex-row items-start justify-center gap-8">
+      <div class="flex flex-col items-center gap-2">
+        <b>Draw input:</b>
+        <canvas id="draw-canvas" width="200" height="200" class="border border-gray-400 rounded bg-white mt-2 mb-2 touch-none" style="touch-action:none;"></canvas>
+        <button id="reset-btn" class="mb-2 px-4 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition">Reset</button>
+        <label class="flex items-center mb-2 select-none cursor-pointer mt-2">
+          <input type="checkbox" id="show-grid-toggle" class="mr-2 accent-blue-600">
+          <span>Show grid lines</span>
+        </label>
+      </div>
+      <div id="retina-container" class="hidden flex-col items-center w-auto mt-2">
+        <b>Computers View:</b>
+        <div id="retina" class="grid grid-cols-1 gap-2 mt-2"></div>
+      </div>
     </div>
-  </div>
-  <div class="mb-4 flex flex-col items-center">
-    <label class="flex items-center mb-2 select-none cursor-pointer">
+    <label class="flex items-center mb-2 select-none cursor-pointer mt-2">
       <input type="checkbox" id="show-squares-toggle" class="mr-2 accent-blue-600">
-      <span>Show retina as squares</span>
+      <span>Show what the computer sees</span>
     </label>
-    <div id="squares-rep" class="mb-2 hidden"></div>
+  </div>
+
+  <div class="mb-4 flex flex-col items-center">
     <b>Predicted number:</b>
     <div id="numbers" class="flex gap-2 mt-2"></div>
   </div>
+
   <div class="output w-full max-w-xl" id="output"></div>
   <script>
     // Define the cortical model
@@ -91,33 +100,197 @@
     IT[259]=[227,228,229,230,231,277,278,279,280,281];
     IT[260]=[233,234,235,242,243,261,262,263];
 
-    // Initial retina image (vertical line in the center)
-    let image = [0,0,0,1,0,
-                 0,0,0,1,0,
-                 0,0,0,1,0,
-                 0,0,0,1,0,
-                 0,0,0,1,0];
+    // --- Retina state ---
+    let retinaGrid = [
+      0,0,0,0,0,
+      0,0,0,0,0,
+      0,0,0,0,0,
+      0,0,0,0,0,
+      0,0,0,0,0
+    ];
 
-    // Render retina as checkboxes
-    function renderRetina() {
-      const retinaDiv = document.getElementById('retina');
-      retinaDiv.innerHTML = '';
-      for (let i = 0; i < 25; i++) {
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'w-6 h-6 accent-blue-600 cursor-not-allowed';
-        checkbox.checked = !!image[i];
-        checkbox.id = 'retina-' + i;
-        checkbox.disabled = true;
-        const label = document.createElement('label');
-        label.htmlFor = 'retina-' + i;
-        label.className = 'flex items-center justify-center w-8 h-8 rounded border border-gray-300 bg-white';
-        label.appendChild(checkbox);
-        retinaDiv.appendChild(label);
+    // --- Canvas Drawing Logic ---
+    const canvas = document.getElementById('draw-canvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let lastX = 0, lastY = 0;
+
+    // Store all drawn line segments as {x1, y1, x2, y2}
+    let drawnLines = [];
+
+    // Draw grid lines to show 5x5 sectors
+    function drawGridLines() {
+      if (!document.getElementById('show-grid-toggle').checked) return;
+      ctx.save();
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * canvas.width / 5, 0);
+        ctx.lineTo(i * canvas.width / 5, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * canvas.height / 5);
+        ctx.lineTo(canvas.width, i * canvas.height / 5);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Redraw all recorded lines and grid lines as needed
+    function redrawCanvasWithGridOption() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const seg of drawnLines) {
+        drawLine(seg.x1, seg.y1, seg.x2, seg.y2, false);
+      }
+      drawGridLines();
+    }
+
+    // Clear canvas and grid, and reset drawnLines
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawnLines = [];
+      drawGridLines();
+    }
+
+    // Draw a black line on the canvas, optionally record it
+    function drawLine(x1, y1, x2, y2, record = true) {
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 16;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      if (record) {
+        drawnLines.push({x1, y1, x2, y2});
       }
     }
 
-    // Render number squares
+    // --- Canvas Mouse/Touch Event Handlers ---
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      [lastX, lastY] = [e.offsetX, e.offsetY];
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+      drawLine(lastX, lastY, e.offsetX, e.offsetY, true);
+      [lastX, lastY] = [e.offsetX, e.offsetY];
+    });
+    canvas.addEventListener('mouseup', (e) => {
+      isDrawing = false;
+      updateRetinaFromCanvas();
+      showRetina();
+    });
+    canvas.addEventListener('mouseleave', (e) => {
+      isDrawing = false;
+      updateRetinaFromCanvas();
+      showRetina();
+    });
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isDrawing = true;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      lastX = touch.clientX - rect.left;
+      lastY = touch.clientY - rect.top;
+    }, {passive: false});
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      drawLine(lastX, lastY, x, y, true);
+      lastX = x;
+      lastY = y;
+    }, {passive: false});
+    canvas.addEventListener('touchend', (e) => {
+      isDrawing = false;
+      updateRetinaFromCanvas();
+      showRetina();
+    });
+
+    // Update grid lines toggle to redraw without clearing drawing
+    document.getElementById('show-grid-toggle').addEventListener('change', function() {
+      redrawCanvasWithGridOption();
+    });
+
+    // --- Retina Grid Update from Canvas Drawing ---
+    function updateRetinaFromCanvas() {
+      const sectorWidth = canvas.width / 5;
+      const sectorHeight = canvas.height / 5;
+      let retinaChanged = false;
+      for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < 5; col++) {
+          const imgData = ctx.getImageData(col*sectorWidth, row*sectorHeight, sectorWidth, sectorHeight);
+          let blackPixels = 0;
+          for (let k = 0; k < imgData.data.length; k += 4) {
+            if (imgData.data[k] < 50 && imgData.data[k+1] < 50 && imgData.data[k+2] < 50 && imgData.data[k+3] > 32) {
+              blackPixels++;
+            }
+          }
+          const threshold = (sectorWidth * sectorHeight) * 0.02;
+          const idx = row*5 + col;
+          const newVal = blackPixels > threshold ? 1 : 0;
+          if (retinaGrid[idx] !== newVal) retinaChanged = true;
+          retinaGrid[idx] = newVal;
+        }
+      }
+      if (retinaChanged) {
+        runSimulation();
+        renderRetina();
+      }
+    }
+
+    // --- Retina Grid Rendering (as squares, not checkboxes) ---
+    function renderRetina() {
+      const retinaContainer = document.getElementById('retina-container');
+      const retinaDiv = document.getElementById('retina');
+      // Only render if toggle is checked
+      if (!document.getElementById('show-squares-toggle').checked) {
+        retinaContainer.classList.add('hidden');
+        return;
+      }
+      retinaContainer.classList.remove('hidden');
+      retinaDiv.innerHTML = '';
+      let html = '<div class="grid grid-cols-5 gap-1">';
+      for (let i = 0; i < 25; i++) {
+        html += `<div class="w-6 h-6 rounded ${retinaGrid[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
+      }
+      html += '</div>';
+      retinaDiv.innerHTML = html;
+    }
+
+    // --- Retina Grid as Squares Representation ---
+    function renderSquaresRep() {
+      const squaresDiv = document.getElementById('squares-rep');
+      if (!document.getElementById('show-squares-toggle').checked) {
+        squaresDiv.classList.add('hidden');
+        squaresDiv.innerHTML = '';
+        return;
+      }
+      squaresDiv.classList.remove('hidden');
+      let html = '<div class="grid grid-cols-5 gap-1">';
+      for (let i = 0; i < 25; i++) {
+        html += `<div class="w-6 h-6 rounded ${retinaGrid[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
+      }
+      html += '</div>';
+      squaresDiv.innerHTML = html;
+    }
+    document.getElementById('show-squares-toggle').addEventListener('change', renderSquaresRep);
+
+    // --- Retina Show/Hide Helpers ---
+    function showRetina() {
+      document.getElementById('retina-container').classList.remove('hidden');
+      renderRetina();
+    }
+    function hideRetina() {
+      document.getElementById('retina-container').classList.add('hidden');
+    }
+
+    // --- Simulation and Output Rendering ---
     function renderNumbers(predicted) {
       const numbersDiv = document.getElementById('numbers');
       numbersDiv.innerHTML = '';
@@ -130,259 +303,124 @@
       }
     }
 
-    // Main simulation logic
+    // --- Main Simulation Logic ---
     function runSimulation() {
-      let active_neurons = [];
-      for (let i = 0; i < image.length; i++) {
-        if (image[i] === 1) active_neurons.push(i+1);
+      let activeNeurons = [];
+      for (let i = 0; i < retinaGrid.length; i++) {
+        if (retinaGrid[i] === 1) activeNeurons.push(i+1);
       }
-      const active_retinal_neurons = [...active_neurons];
-
-      // Neuron counts
-      const total_neurons = Object.keys(model).length + Object.keys(IT).length + Object.keys(complex_cells).length + 25;
-      const retina_neurons = 25;
-      let cnt = 0;
+      const activeRetinalNeurons = [...activeNeurons];
+      const totalNeurons = Object.keys(model).length + Object.keys(IT).length + Object.keys(complex_cells).length + 25;
+      const retinaNeurons = 25;
+      let v1Count = 0;
       for (let el in model) {
-        if (el >= 26 && el <= 76) cnt++;
+        if (el >= 26 && el <= 76) v1Count++;
       }
-      const v1_neurons = cnt;
-      cnt = 0;
+      const v1Neurons = v1Count;
+      v1Count = 0;
       for (let el in model) {
-        if (el >= 77 && el <= 155) cnt++;
+        if (el >= 77 && el <= 155) v1Count++;
       }
-      const v2_neurons = cnt;
-      cnt = 0;
+      const v2Neurons = v1Count;
+      v1Count = 0;
       for (let el in model) {
-        if (el >= 156 && el <= 293) cnt++;
+        if (el >= 156 && el <= 293) v1Count++;
       }
-      const v4_neurons = cnt + Object.keys(complex_cells).length;
-      const it_neurons = Object.keys(IT).length;
-
+      const v4Neurons = v1Count + Object.keys(complex_cells).length;
+      const itNeurons = Object.keys(IT).length;
       let log = '';
-      log += `The total number of neurons is: ${total_neurons}\n`;
-      log += `Neurons in retina: ${retina_neurons}\n`;
-      log += `Neurons in V1: ${v1_neurons}\n`;
-      log += `Neurons in V2: ${v2_neurons}\n`;
-      log += `Neurons in V4: ${v4_neurons}\n`;
-      log += `Neurons in IT: ${it_neurons}\n`;
-      log += `Active retinal neurons: [${active_retinal_neurons.join(', ')}]\n`;
+      log += `The total number of neurons is: ${totalNeurons}\n`;
+      log += `Neurons in retina: ${retinaNeurons}\n`;
+      log += `Neurons in V1: ${v1Neurons}\n`;
+      log += `Neurons in V2: ${v2Neurons}\n`;
+      log += `Neurons in V4: ${v4Neurons}\n`;
+      log += `Neurons in IT: ${itNeurons}\n`;
+      log += `Active retinal neurons: [${activeRetinalNeurons.join(', ')}]\n`;
       log += 'Processing standard cortical neurons...\n';
       for (let i in model) {
-        let should_fire = true;
+        let shouldFire = true;
         for (let j of model[i]) {
-          if (!active_neurons.includes(j)) {
-            should_fire = false;
+          if (!activeNeurons.includes(j)) {
+            shouldFire = false;
             break;
           }
         }
-        if (should_fire) active_neurons.push(Number(i));
+        if (shouldFire) activeNeurons.push(Number(i));
       }
-      // Process complex neurons
       log += 'Processing complex neurons...\n';
       for (let i in complex_cells) {
-        let should_fire = false;
+        let shouldFire = false;
         for (let j of complex_cells[i]) {
-          if (active_neurons.includes(j)) {
-            should_fire = true;
+          if (activeNeurons.includes(j)) {
+            shouldFire = true;
             break;
           }
         }
-        if (should_fire) active_neurons.push(Number(i));
+        if (shouldFire) activeNeurons.push(Number(i));
       }
-      // Process IT neurons
-      let active_IT_neurons = [];
+      let activeITNeurons = [];
       log += 'Processing IT neurons...\n';
       for (let i in IT) {
-        let should_fire = false;
+        let shouldFire = false;
         for (let j of IT[i]) {
-          if (active_neurons.includes(j)) {
-            should_fire = true;
+          if (activeNeurons.includes(j)) {
+            shouldFire = true;
             break;
           }
         }
-        if (should_fire) active_IT_neurons.push(Number(i));
+        if (shouldFire) activeITNeurons.push(Number(i));
       }
-      log += `Potentially active IT neurons: [${active_IT_neurons.join(', ')}]\n`;
+      log += `Potentially active IT neurons: [${activeITNeurons.join(', ')}]\n`;
       log += 'Processing inhibition...\n';
-      active_IT_neurons = [...new Set(active_IT_neurons)];
-      if (active_IT_neurons.length === 1) {
-        active_neurons.push(Number(active_IT_neurons[0]));
-      } else if (active_IT_neurons.includes(259)) {
-        active_neurons.push(259);
-      } else if (active_IT_neurons.includes(260)) {
-        active_neurons.push(260);
-      } else if (active_IT_neurons.includes(251)) {
-        active_neurons.push(251);
-      } else if (active_IT_neurons.includes(253)) {
-        active_neurons.push(253);
-      } else if (active_IT_neurons.includes(254)) {
-        active_neurons.push(254);
-      } else if (active_IT_neurons.includes(258)) {
-        active_neurons.push(258);
-      } else if (active_IT_neurons.includes(257)) {
-        active_neurons.push(257);
-      } else if (active_IT_neurons.includes(255)) {
-        active_neurons.push(255);
+      activeITNeurons = [...new Set(activeITNeurons)];
+      if (activeITNeurons.length === 1) {
+        activeNeurons.push(Number(activeITNeurons[0]));
+      } else if (activeITNeurons.includes(259)) {
+        activeNeurons.push(259);
+      } else if (activeITNeurons.includes(260)) {
+        activeNeurons.push(260);
+      } else if (activeITNeurons.includes(251)) {
+        activeNeurons.push(251);
+      } else if (activeITNeurons.includes(253)) {
+        activeNeurons.push(253);
+      } else if (activeITNeurons.includes(254)) {
+        activeNeurons.push(254);
+      } else if (activeITNeurons.includes(258)) {
+        activeNeurons.push(258);
+      } else if (activeITNeurons.includes(257)) {
+        activeNeurons.push(257);
+      } else if (activeITNeurons.includes(255)) {
+        activeNeurons.push(255);
       }
-      const active_cortical_neurons = Array.from(new Set(active_neurons.filter(n => !active_retinal_neurons.includes(n)))).sort((a,b)=>a-b);
-      log += `Active cortical neurons: [${active_cortical_neurons.join(', ')}]\n`;
-      let predicted_number = active_neurons[active_neurons.length-1] - 251;
-      if (!(predicted_number >= 0 && predicted_number < 10)) predicted_number = 'Not a number';
-      log += `The predicted number is: ${predicted_number}`;
+      const activeCorticalNeurons = Array.from(new Set(activeNeurons.filter(n => !activeRetinalNeurons.includes(n)))).sort((a,b)=>a-b);
+      log += `Active cortical neurons: [${activeCorticalNeurons.join(', ')}]\n`;
+      let predictedNumber = activeNeurons[activeNeurons.length-1] - 251;
+      if (!(predictedNumber >= 0 && predictedNumber < 10)) predictedNumber = 'Not a number';
+      log += `The predicted number is: ${predictedNumber}`;
       document.getElementById('output').innerHTML = `<pre>${log}</pre>`;
-      renderNumbers(predicted_number);
-      renderSquaresRep();
+      renderNumbers(predictedNumber);
     }
 
-    // Initial render
-    renderRetina();
-    runSimulation();
-
-    // --- Canvas drawing ---
-    const canvas = document.getElementById('draw-canvas');
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    let lastX = 0, lastY = 0;
-    function drawGridLines() {
-      ctx.save();
-      ctx.strokeStyle = '#bbb';
-      ctx.lineWidth = 1;
-      for (let i = 1; i < 5; i++) {
-        // Vertical lines
-        ctx.beginPath();
-        ctx.moveTo(i * canvas.width / 5, 0);
-        ctx.lineTo(i * canvas.width / 5, canvas.height);
-        ctx.stroke();
-        // Horizontal lines
-        ctx.beginPath();
-        ctx.moveTo(0, i * canvas.height / 5);
-        ctx.lineTo(canvas.width, i * canvas.height / 5);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawGridLines();
-    }
-    // Draw grid lines on initial load
-    clearCanvas();
-    function drawLine(x1, y1, x2, y2) {
-      ctx.strokeStyle = '#000'; // Always black
-      ctx.lineWidth = 16;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    }
-    canvas.addEventListener('mousedown', (e) => {
-      drawing = true;
-      [lastX, lastY] = [e.offsetX, e.offsetY];
-    });
-    canvas.addEventListener('mousemove', (e) => {
-      if (!drawing) return;
-      drawLine(lastX, lastY, e.offsetX, e.offsetY);
-      [lastX, lastY] = [e.offsetX, e.offsetY];
-    });
-    canvas.addEventListener('mouseup', (e) => {
-      drawing = false;
-      updateImageFromCanvas();
-      showRetina();
-    });
-    canvas.addEventListener('mouseleave', (e) => {
-      drawing = false;
-      updateImageFromCanvas();
-      showRetina();
-    });
-    // Touch support for canvas
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      drawing = true;
-      const rect = canvas.getBoundingClientRect();
-      const touch = e.touches[0];
-      lastX = touch.clientX - rect.left;
-      lastY = touch.clientY - rect.top;
-    }, {passive: false});
-    canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      if (!drawing) return;
-      const rect = canvas.getBoundingClientRect();
-      const touch = e.touches[0];
-      const x = touch.clientX - rect.left;
-      const y = touch.clientY - rect.top;
-      drawLine(lastX, lastY, x, y);
-      lastX = x;
-      lastY = y;
-    }, {passive: false});
-    canvas.addEventListener('touchend', (e) => {
-      drawing = false;
-      updateImageFromCanvas();
-      showRetina();
-    });
-
-    function updateImageFromCanvas() {
-      const w = canvas.width / 5;
-      const h = canvas.height / 5;
-      let changed = false;
-      for (let i = 0; i < 5; i++) {
-        for (let j = 0; j < 5; j++) {
-          const imgData = ctx.getImageData(j*w, i*h, w, h);
-          let blackPixels = 0;
-          for (let k = 0; k < imgData.data.length; k += 4) {
-            // Check if pixel is black (or nearly black)
-            if (imgData.data[k] < 50 && imgData.data[k+1] < 50 && imgData.data[k+2] < 50 && imgData.data[k+3] > 32) {
-              blackPixels++;
-            }
-          }
-          // If more than 2% of the pixels are black, mark as active
-          const threshold = (w * h) * 0.02;
-          const idx = i*5 + j;
-          const newVal = blackPixels > threshold ? 1 : 0;
-          if (image[idx] !== newVal) changed = true;
-          image[idx] = newVal;
-        }
-      }
-      if (changed) {
-        runSimulation();
-        renderRetina();
-      }
-    }
-
+    // --- Reset Button Handler ---
     document.getElementById('reset-btn').onclick = () => {
-      image = Array(25).fill(0);
+      retinaGrid = Array(25).fill(0);
       clearCanvas();
       hideRetina();
       runSimulation();
       renderRetina();
     };
 
-    function renderSquaresRep() {
-      const squaresDiv = document.getElementById('squares-rep');
-      if (!document.getElementById('show-squares-toggle').checked) {
-        squaresDiv.classList.add('hidden');
-        squaresDiv.innerHTML = '';
-        return;
-      }
-      squaresDiv.classList.remove('hidden');
-      let html = '<div class="grid grid-cols-5 gap-1">';
-      for (let i = 0; i < 25; i++) {
-        html += `<div class="w-6 h-6 rounded ${image[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
-      }
-      html += '</div>';
-      squaresDiv.innerHTML = html;
-    }
-    document.getElementById('show-squares-toggle').addEventListener('change', renderSquaresRep);
-    // Call renderSquaresRep after drawing, reset, and simulation
-    // Add to updateImageFromCanvas, reset, and runSimulation
-    const origUpdateImageFromCanvas = updateImageFromCanvas;
-    updateImageFromCanvas = function() { origUpdateImageFromCanvas(); renderSquaresRep(); };
-    const origRunSimulation = runSimulation;
-    runSimulation = function() { origRunSimulation(); renderSquaresRep(); };
-    const origResetBtn = document.getElementById('reset-btn').onclick;
-    document.getElementById('reset-btn').onclick = function() { origResetBtn && origResetBtn(); renderSquaresRep(); };
-    // Initial render
-    renderSquaresRep();
+    // --- Initial Render ---
+    hideRetina();
+    runSimulation();
+    renderRetina();
+
+    // Toggle retina input grid visibility
+    document.getElementById('show-squares-toggle').addEventListener('change', function() {
+      renderRetina();
+    });
+    // On page load, retina input is hidden
+    document.getElementById('retina-container').classList.add('hidden');
   </script>
 </body>
 </html> 
