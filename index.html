@@ -25,7 +25,7 @@
       </div>
       <div id="retina-container" class="hidden flex-col items-center w-auto mt-2">
         <b>Computers View:</b>
-        <div id="retina" class="grid grid-cols-1 gap-2 mt-2"></div>
+        <div id="retina" class="grid grid-cols-10 gap-1 mt-2"></div>
       </div>
     </div>
     <label class="flex items-center mb-2 select-none cursor-pointer mt-2">
@@ -101,37 +101,29 @@
     IT[260]=[233,234,235,242,243,261,262,263];
 
     // --- Retina state ---
-    let retinaGrid = [
-      0,0,0,0,0,
-      0,0,0,0,0,
-      0,0,0,0,0,
-      0,0,0,0,0,
-      0,0,0,0,0
-    ];
+    let retinaGrid = Array(100).fill(0); // 10x10 grid
 
     // --- Canvas Drawing Logic ---
     const canvas = document.getElementById('draw-canvas');
     const ctx = canvas.getContext('2d');
     let isDrawing = false;
     let lastX = 0, lastY = 0;
-
-    // Store all drawn line segments as {x1, y1, x2, y2}
     let drawnLines = [];
 
-    // Draw grid lines to show 5x5 sectors
+    // Draw grid lines to show 10x10 sectors
     function drawGridLines() {
       if (!document.getElementById('show-grid-toggle').checked) return;
       ctx.save();
       ctx.strokeStyle = '#bbb';
       ctx.lineWidth = 1;
-      for (let i = 1; i < 5; i++) {
+      for (let i = 1; i < 10; i++) {
         ctx.beginPath();
-        ctx.moveTo(i * canvas.width / 5, 0);
-        ctx.lineTo(i * canvas.width / 5, canvas.height);
+        ctx.moveTo(i * canvas.width / 10, 0);
+        ctx.lineTo(i * canvas.width / 10, canvas.height);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(0, i * canvas.height / 5);
-        ctx.lineTo(canvas.width, i * canvas.height / 5);
+        ctx.moveTo(0, i * canvas.height / 10);
+        ctx.lineTo(canvas.width, i * canvas.height / 10);
         ctx.stroke();
       }
       ctx.restore();
@@ -219,11 +211,11 @@
 
     // --- Retina Grid Update from Canvas Drawing ---
     function updateRetinaFromCanvas() {
-      const sectorWidth = canvas.width / 5;
-      const sectorHeight = canvas.height / 5;
+      const sectorWidth = canvas.width / 10;
+      const sectorHeight = canvas.height / 10;
       let retinaChanged = false;
-      for (let row = 0; row < 5; row++) {
-        for (let col = 0; col < 5; col++) {
+      for (let row = 0; row < 10; row++) {
+        for (let col = 0; col < 10; col++) {
           const imgData = ctx.getImageData(col*sectorWidth, row*sectorHeight, sectorWidth, sectorHeight);
           let blackPixels = 0;
           for (let k = 0; k < imgData.data.length; k += 4) {
@@ -232,7 +224,7 @@
             }
           }
           const threshold = (sectorWidth * sectorHeight) * 0.02;
-          const idx = row*5 + col;
+          const idx = row*10 + col;
           const newVal = blackPixels > threshold ? 1 : 0;
           if (retinaGrid[idx] !== newVal) retinaChanged = true;
           retinaGrid[idx] = newVal;
@@ -248,16 +240,15 @@
     function renderRetina() {
       const retinaContainer = document.getElementById('retina-container');
       const retinaDiv = document.getElementById('retina');
-      // Only render if toggle is checked
       if (!document.getElementById('show-squares-toggle').checked) {
         retinaContainer.classList.add('hidden');
         return;
       }
       retinaContainer.classList.remove('hidden');
       retinaDiv.innerHTML = '';
-      let html = '<div class="grid grid-cols-5 gap-1">';
-      for (let i = 0; i < 25; i++) {
-        html += `<div class="w-6 h-6 rounded ${retinaGrid[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
+      let html = '<div class="grid grid-cols-10 gap-1">';
+      for (let i = 0; i < 100; i++) {
+        html += `<div class="w-4 h-4 rounded ${retinaGrid[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
       }
       html += '</div>';
       retinaDiv.innerHTML = html;
@@ -272,9 +263,9 @@
         return;
       }
       squaresDiv.classList.remove('hidden');
-      let html = '<div class="grid grid-cols-5 gap-1">';
-      for (let i = 0; i < 25; i++) {
-        html += `<div class="w-6 h-6 rounded ${retinaGrid[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
+      let html = '<div class="grid grid-cols-10 gap-1">';
+      for (let i = 0; i < 100; i++) {
+        html += `<div class="w-4 h-4 rounded ${retinaGrid[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
       }
       html += '</div>';
       squaresDiv.innerHTML = html;
@@ -303,15 +294,68 @@
       }
     }
 
+    // --- Downsample 10x10 retina to 5x5 for model ---
+    function downsampleRetina10to5(retina10x10) {
+      const retina5x5 = Array(25).fill(0);
+      for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < 5; col++) {
+          let active = 0;
+          for (let dr = 0; dr < 2; dr++) {
+            for (let dc = 0; dc < 2; dc++) {
+              const r = row * 2 + dr;
+              const c = col * 2 + dc;
+              if (retina10x10[r * 10 + c]) active = 1;
+            }
+          }
+          retina5x5[row * 5 + col] = active;
+        }
+      }
+      return retina5x5;
+    }
+
+    // --- Classify drawn line as vertical, horizontal, diagonal, or uncertain ---
+    function classifyLineType(retinaGrid) {
+      const rowCounts = Array(10).fill(0);
+      const colCounts = Array(10).fill(0);
+      let mainDiag = 0, antiDiag = 0;
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+          if (retinaGrid[r * 10 + c]) {
+            rowCounts[r]++;
+            colCounts[c]++;
+            if (r === c) mainDiag++;
+            if (r + c === 9) antiDiag++;
+          }
+        }
+      }
+      const maxRow = Math.max(...rowCounts);
+      const maxCol = Math.max(...colCounts);
+      if (maxCol >= 6 && maxCol > maxRow && maxCol > mainDiag && maxCol > antiDiag) {
+        return 'vertical';
+      }
+      if (maxRow >= 6 && maxRow > maxCol && maxRow > mainDiag && maxRow > antiDiag) {
+        return 'horizontal';
+      }
+      if (mainDiag >= 6 && mainDiag > maxRow && mainDiag > maxCol && mainDiag > antiDiag) {
+        return 'diagonal (\\)';
+      }
+      if (antiDiag >= 6 && antiDiag > maxRow && antiDiag > maxCol && antiDiag > mainDiag) {
+        return 'diagonal (/)' ;
+      }
+      return 'uncertain';
+    }
+
     // --- Main Simulation Logic ---
     function runSimulation() {
+      // Downsample retinaGrid to 5x5 for the model
+      const retina5x5 = downsampleRetina10to5(retinaGrid);
       let activeNeurons = [];
-      for (let i = 0; i < retinaGrid.length; i++) {
-        if (retinaGrid[i] === 1) activeNeurons.push(i+1);
+      for (let i = 0; i < retina5x5.length; i++) {
+        if (retina5x5[i] === 1) activeNeurons.push(i+1);
       }
       const activeRetinalNeurons = [...activeNeurons];
-      const totalNeurons = Object.keys(model).length + Object.keys(IT).length + Object.keys(complex_cells).length + 25;
-      const retinaNeurons = 25;
+      const totalNeurons = Object.keys(model).length + Object.keys(IT).length + Object.keys(complex_cells).length + 100;
+      const retinaNeurons = 100;
       let v1Count = 0;
       for (let el in model) {
         if (el >= 26 && el <= 76) v1Count++;
@@ -397,13 +441,17 @@
       let predictedNumber = activeNeurons[activeNeurons.length-1] - 251;
       if (!(predictedNumber >= 0 && predictedNumber < 10)) predictedNumber = 'Not a number';
       log += `The predicted number is: ${predictedNumber}`;
+      // Add line type detection
+      const lineType = classifyLineType(retinaGrid);
+      log += `\nDetected line type: ${lineType}`;
       document.getElementById('output').innerHTML = `<pre>${log}</pre>`;
       renderNumbers(predictedNumber);
+      renderRetina();
     }
 
     // --- Reset Button Handler ---
     document.getElementById('reset-btn').onclick = () => {
-      retinaGrid = Array(25).fill(0);
+      retinaGrid = Array(100).fill(0);
       clearCanvas();
       hideRetina();
       runSimulation();
