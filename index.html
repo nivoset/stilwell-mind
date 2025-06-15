@@ -11,9 +11,15 @@
   <p class="mb-2 text-gray-700">This static site demonstrates a simple cortical model simulation, ported from Python to JavaScript.</p>
   <p class="mb-1 text-gray-500 text-sm">Model ported from <a href="https://github.com/celiasmith/mind_field_stilwell_brain" class="underline text-blue-700 hover:text-blue-900" target="_blank" rel="noopener">celiasmith/mind_field_stilwell_brain</a></p>
   <p class="mb-6 text-gray-500 text-sm">HTML/JS version repo: <a href="https://github.com/nivoset/stilwell-mind" class="underline text-blue-700 hover:text-blue-900" target="_blank" rel="noopener">nivoset/stilwell-mind</a></p>
-  <div class="mb-4">
-    <b>Retina input:</b>
-    <div id="retina" class="grid grid-cols-5 gap-2 mt-2"></div>
+
+  <div class="mb-4 flex flex-col items-center">
+    <b>Draw input:</b>
+    <canvas id="draw-canvas" width="200" height="200" class="border border-gray-400 rounded bg-white mt-2 mb-2 touch-none" style="touch-action:none;"></canvas>
+    <button id="reset-btn" class="mb-2 px-4 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition">Reset</button>
+    <div id="retina-container" class="hidden flex-col items-center w-full">
+      <b>Retina input:</b>
+      <div id="retina" class="grid grid-cols-5 gap-2 mt-2"></div>
+    </div>
   </div>
   <div class="mb-4">
     <b>Predicted number:</b>
@@ -94,13 +100,10 @@
       for (let i = 0; i < 25; i++) {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.className = 'w-6 h-6 accent-blue-600 cursor-pointer';
+        checkbox.className = 'w-6 h-6 accent-blue-600 cursor-not-allowed';
         checkbox.checked = !!image[i];
         checkbox.id = 'retina-' + i;
-        checkbox.addEventListener('change', () => {
-          image[i] = checkbox.checked ? 1 : 0;
-          runSimulation();
-        });
+        checkbox.disabled = true;
         const label = document.createElement('label');
         label.htmlFor = 'retina-' + i;
         label.className = 'flex items-center justify-center w-8 h-8 rounded border border-gray-300 bg-white';
@@ -228,6 +231,125 @@
     // Initial render
     renderRetina();
     runSimulation();
+
+    // --- Canvas drawing ---
+    const canvas = document.getElementById('draw-canvas');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+    function drawGridLines() {
+      ctx.save();
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 5; i++) {
+        // Vertical lines
+        ctx.beginPath();
+        ctx.moveTo(i * canvas.width / 5, 0);
+        ctx.lineTo(i * canvas.width / 5, canvas.height);
+        ctx.stroke();
+        // Horizontal lines
+        ctx.beginPath();
+        ctx.moveTo(0, i * canvas.height / 5);
+        ctx.lineTo(canvas.width, i * canvas.height / 5);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGridLines();
+    }
+    // Draw grid lines on initial load
+    clearCanvas();
+    function drawLine(x1, y1, x2, y2) {
+      ctx.strokeStyle = '#000'; // Always black
+      ctx.lineWidth = 16;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    canvas.addEventListener('mousedown', (e) => {
+      drawing = true;
+      [lastX, lastY] = [e.offsetX, e.offsetY];
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      if (!drawing) return;
+      drawLine(lastX, lastY, e.offsetX, e.offsetY);
+      [lastX, lastY] = [e.offsetX, e.offsetY];
+    });
+    canvas.addEventListener('mouseup', (e) => {
+      drawing = false;
+      updateImageFromCanvas();
+      showRetina();
+    });
+    canvas.addEventListener('mouseleave', (e) => {
+      drawing = false;
+      updateImageFromCanvas();
+      showRetina();
+    });
+    // Touch support for canvas
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      drawing = true;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      lastX = touch.clientX - rect.left;
+      lastY = touch.clientY - rect.top;
+    }, {passive: false});
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!drawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      drawLine(lastX, lastY, x, y);
+      lastX = x;
+      lastY = y;
+    }, {passive: false});
+    canvas.addEventListener('touchend', (e) => {
+      drawing = false;
+      updateImageFromCanvas();
+      showRetina();
+    });
+
+    function updateImageFromCanvas() {
+      const w = canvas.width / 5;
+      const h = canvas.height / 5;
+      let changed = false;
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 5; j++) {
+          const imgData = ctx.getImageData(j*w, i*h, w, h);
+          let blackPixels = 0;
+          for (let k = 0; k < imgData.data.length; k += 4) {
+            // Check if pixel is black (or nearly black)
+            if (imgData.data[k] < 50 && imgData.data[k+1] < 50 && imgData.data[k+2] < 50 && imgData.data[k+3] > 32) {
+              blackPixels++;
+            }
+          }
+          // If more than 2% of the pixels are black, mark as active
+          const threshold = (w * h) * 0.02;
+          const idx = i*5 + j;
+          const newVal = blackPixels > threshold ? 1 : 0;
+          if (image[idx] !== newVal) changed = true;
+          image[idx] = newVal;
+        }
+      }
+      if (changed) {
+        runSimulation();
+        renderRetina();
+      }
+    }
+
+    document.getElementById('reset-btn').onclick = () => {
+      image = Array(25).fill(0);
+      clearCanvas();
+      hideRetina();
+      runSimulation();
+      renderRetina();
+    };
   </script>
 </body>
 </html> 
