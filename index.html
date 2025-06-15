@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brain Simulation Example</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col items-center py-8">
+  <h1 class="text-3xl font-bold text-blue-800 mb-2">Brain Simulation Example</h1>
+  <p class="mb-2 text-gray-700">This static site demonstrates a simple cortical model simulation, ported from Python to JavaScript.</p>
+  <p class="mb-6 text-gray-500 text-sm">Model ported from <a href="https://github.com/celiasmith/mind_field_stilwell_brain" class="underline text-blue-700 hover:text-blue-900" target="_blank" rel="noopener">celiasmith/mind_field_stilwell_brain</a></p>
+  <div class="mb-4">
+    <b>Retina input:</b>
+    <div id="retina" class="grid grid-cols-5 gap-2 mt-2"></div>
+  </div>
+  <div class="mb-4">
+    <b>Predicted number:</b>
+    <div id="numbers" class="flex gap-2 mt-2"></div>
+  </div>
+  <div class="output w-full max-w-xl" id="output"></div>
+  <script>
+    // Define the cortical model
+    const model = {};
+    model[26]=[1,2,3]; model[27]=[2,3,4]; model[28]=[3,4,5];
+    model[29]=[6,7,8]; model[30]=[7,8,9]; model[31]=[8,9,10];
+    model[32]=[11,12,13]; model[33]=[12,13,14]; model[34]=[13,14,15];
+    model[35]=[16,17,18]; model[36]=[17,18,19]; model[37]=[18,19,20];
+    model[38]=[21,22,23]; model[39]=[22,23,24]; model[40]=[23,24,25];
+    model[41]=[1,6,11]; model[42]=[6,11,16]; model[43]=[11,16,21];
+    model[44]=[2,7,12]; model[45]=[7,12,17]; model[46]=[12,17,22];
+    model[47]=[3,8,13]; model[48]=[8,13,18]; model[49]=[13,18,23];
+    model[50]=[4,9,14]; model[51]=[9,14,19]; model[52]=[14,19,24];
+    model[53]=[5,10,15]; model[54]=[10,15,20]; model[55]=[15,20,25];
+    model[57]=[6,12,18]; model[60]=[7,13,19]; model[63]=[8,14,20];
+    model[65]=[15,19,23]; model[66]=[10,14,18]; model[67]=[14,18,22];
+    model[68]=[5,9,13]; model[69]=[9,13,17]; model[70]=[13,17,21];
+    model[71]=[4,8,12]; model[72]=[8,12,16]; model[73]=[3,7,11];
+    model[74]=[8,12,18]; model[75]=[9,13,19]; model[76]=[10,14,20];
+    model[77]=[26,41]; model[78]=[26,47]; model[79]=[32,41]; model[80]=[32,47];
+    model[81]=[32,43]; model[82]=[32,49]; model[83]=[38,43]; model[84]=[38,49];
+    model[85]=[27,44]; model[86]=[27,50]; model[87]=[33,44]; model[88]=[33,50];
+    model[89]=[33,46]; model[90]=[33,52]; model[91]=[39,46]; model[92]=[39,52];
+    model[93]=[47,28]; model[94]=[53,28]; model[95]=[34,47]; model[96]=[34,53];
+    model[97]=[34,49]; model[98]=[34,55]; model[99]=[40,49]; model[100]=[40,55];
+    model[111]=[41,42]; model[112]=[42,43]; model[113]=[44,45]; model[114]=[45,46];
+    model[115]=[47,48]; model[116]=[48,49]; model[117]=[50,51]; model[118]=[51,52];
+    model[119]=[53,54]; model[120]=[54,55]; model[129]=[26,57]; model[130]=[26,72];
+    model[131]=[38,57]; model[132]=[38,72]; model[133]=[27,60]; model[134]=[27,69];
+    model[135]=[39,60]; model[136]=[39,69]; model[137]=[28,63]; model[138]=[28,66];
+    model[139]=[40,63]; model[140]=[40,66]; model[144]=[29,70]; model[145]=[30,67];
+    model[146]=[31,65]; model[147]=[32,73]; model[148]=[33,71]; model[149]=[34,68];
+    model[153]=[47,74]; model[154]=[50,75]; model[155]=[53,76]; model[171]=[78,81,83];
+    model[172]=[86,89,91]; model[173]=[94,97,99]; model[174]=[130,132]; model[175]=[134,136];
+    model[176]=[138,140]; model[181]=[78,82,84]; model[182]=[86,90,92]; model[183]=[94,98,100];
+    model[184]=[78,84,153]; model[185]=[86,92,154]; model[186]=[94,100,155]; model[190]=[79,116];
+    model[191]=[87,118]; model[192]=[95,120]; model[196]=[77,82,84]; model[197]=[85,90,92];
+    model[198]=[93,98,100]; model[199]=[129,131]; model[200]=[133,135]; model[201]=[137,140];
+    model[203]=[79,83,84]; model[204]=[87,91,92]; model[205]=[95,99,100]; model[206]=[82,83,147];
+    model[207]=[90,91,148]; model[208]=[98,99,149]; model[216]=[78,115]; model[217]=[86,117];
+    model[218]=[94,119]; model[227]=[130,131]; model[228]=[134,135]; model[229]=[138,139];
+    model[233]=[78,79,116]; model[234]=[86,87,118]; model[235]=[94,95,120]; model[242]=[77,88,118];
+    model[243]=[85,96,120]; model[245]=[77,83,115]; model[246]=[85,91,117]; model[247]=[93,99,119];
+
+    const complex_cells = {};
+    complex_cells[291]=[111,113,115,117,119];
+    complex_cells[292]=[112,114,116,118,120];
+    complex_cells[293]=[130,134,138,144,145,146];
+
+    const IT = {};
+    IT[251]=[245,246,247,248,249];
+    IT[252]=[156,157,158,159,160,291,292];
+    IT[253]=[171,172,173,174,175,176,179,288,289,290];
+    IT[254]=[181,182,183,184,185,186,189,271,272,273];
+    IT[255]=[190,191,192,193,194,195,265,266,267,268,269,270,285,286,287];
+    IT[256]=[196,197,198,199,200,201];
+    IT[257]=[203,204,205,206,207,208];
+    IT[258]=[216,217,218,274,275,276,293];
+    IT[259]=[227,228,229,230,231,277,278,279,280,281];
+    IT[260]=[233,234,235,242,243,261,262,263];
+
+    // Initial retina image (vertical line in the center)
+    let image = [0,0,0,1,0,
+                 0,0,0,1,0,
+                 0,0,0,1,0,
+                 0,0,0,1,0,
+                 0,0,0,1,0];
+
+    // Render retina as checkboxes
+    function renderRetina() {
+      const retinaDiv = document.getElementById('retina');
+      retinaDiv.innerHTML = '';
+      for (let i = 0; i < 25; i++) {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'w-6 h-6 accent-blue-600 cursor-pointer';
+        checkbox.checked = !!image[i];
+        checkbox.id = 'retina-' + i;
+        checkbox.addEventListener('change', () => {
+          image[i] = checkbox.checked ? 1 : 0;
+          runSimulation();
+        });
+        const label = document.createElement('label');
+        label.htmlFor = 'retina-' + i;
+        label.className = 'flex items-center justify-center w-8 h-8 rounded border border-gray-300 bg-white';
+        label.appendChild(checkbox);
+        retinaDiv.appendChild(label);
+      }
+    }
+
+    // Render number squares
+    function renderNumbers(predicted) {
+      const numbersDiv = document.getElementById('numbers');
+      numbersDiv.innerHTML = '';
+      for (let n = 0; n < 10; n++) {
+        const square = document.createElement('div');
+        square.className = 'w-10 h-10 flex items-center justify-center rounded text-lg font-bold border transition ' +
+          (predicted === n ? 'bg-blue-600 text-white border-blue-700 shadow-lg scale-110' : 'bg-gray-200 text-gray-700 border-gray-400');
+        square.textContent = n;
+        numbersDiv.appendChild(square);
+      }
+    }
+
+    // Main simulation logic
+    function runSimulation() {
+      let active_neurons = [];
+      for (let i = 0; i < image.length; i++) {
+        if (image[i] === 1) active_neurons.push(i+1);
+      }
+      const active_retinal_neurons = [...active_neurons];
+
+      // Neuron counts
+      const total_neurons = Object.keys(model).length + Object.keys(IT).length + Object.keys(complex_cells).length + 25;
+      const retina_neurons = 25;
+      let cnt = 0;
+      for (let el in model) {
+        if (el >= 26 && el <= 76) cnt++;
+      }
+      const v1_neurons = cnt;
+      cnt = 0;
+      for (let el in model) {
+        if (el >= 77 && el <= 155) cnt++;
+      }
+      const v2_neurons = cnt;
+      cnt = 0;
+      for (let el in model) {
+        if (el >= 156 && el <= 293) cnt++;
+      }
+      const v4_neurons = cnt + Object.keys(complex_cells).length;
+      const it_neurons = Object.keys(IT).length;
+
+      let log = '';
+      log += `The total number of neurons is: ${total_neurons}\n`;
+      log += `Neurons in retina: ${retina_neurons}\n`;
+      log += `Neurons in V1: ${v1_neurons}\n`;
+      log += `Neurons in V2: ${v2_neurons}\n`;
+      log += `Neurons in V4: ${v4_neurons}\n`;
+      log += `Neurons in IT: ${it_neurons}\n`;
+      log += `Active retinal neurons: [${active_retinal_neurons.join(', ')}]\n`;
+      log += 'Processing standard cortical neurons...\n';
+      for (let i in model) {
+        let should_fire = true;
+        for (let j of model[i]) {
+          if (!active_neurons.includes(j)) {
+            should_fire = false;
+            break;
+          }
+        }
+        if (should_fire) active_neurons.push(Number(i));
+      }
+      // Process complex neurons
+      log += 'Processing complex neurons...\n';
+      for (let i in complex_cells) {
+        let should_fire = false;
+        for (let j of complex_cells[i]) {
+          if (active_neurons.includes(j)) {
+            should_fire = true;
+            break;
+          }
+        }
+        if (should_fire) active_neurons.push(Number(i));
+      }
+      // Process IT neurons
+      let active_IT_neurons = [];
+      log += 'Processing IT neurons...\n';
+      for (let i in IT) {
+        let should_fire = false;
+        for (let j of IT[i]) {
+          if (active_neurons.includes(j)) {
+            should_fire = true;
+            break;
+          }
+        }
+        if (should_fire) active_IT_neurons.push(Number(i));
+      }
+      log += `Potentially active IT neurons: [${active_IT_neurons.join(', ')}]\n`;
+      log += 'Processing inhibition...\n';
+      active_IT_neurons = [...new Set(active_IT_neurons)];
+      if (active_IT_neurons.length === 1) {
+        active_neurons.push(Number(active_IT_neurons[0]));
+      } else if (active_IT_neurons.includes(259)) {
+        active_neurons.push(259);
+      } else if (active_IT_neurons.includes(260)) {
+        active_neurons.push(260);
+      } else if (active_IT_neurons.includes(251)) {
+        active_neurons.push(251);
+      } else if (active_IT_neurons.includes(253)) {
+        active_neurons.push(253);
+      } else if (active_IT_neurons.includes(254)) {
+        active_neurons.push(254);
+      } else if (active_IT_neurons.includes(258)) {
+        active_neurons.push(258);
+      } else if (active_IT_neurons.includes(257)) {
+        active_neurons.push(257);
+      } else if (active_IT_neurons.includes(255)) {
+        active_neurons.push(255);
+      }
+      const active_cortical_neurons = Array.from(new Set(active_neurons.filter(n => !active_retinal_neurons.includes(n)))).sort((a,b)=>a-b);
+      log += `Active cortical neurons: [${active_cortical_neurons.join(', ')}]\n`;
+      let predicted_number = active_neurons[active_neurons.length-1] - 251;
+      if (!(predicted_number >= 0 && predicted_number < 10)) predicted_number = 'Not a number';
+      log += `The predicted number is: ${predicted_number}`;
+      document.getElementById('output').innerHTML = `<pre>${log}</pre>`;
+      renderNumbers(predicted_number);
+    }
+
+    // Initial render
+    renderRetina();
+    runSimulation();
+  </script>
+</body>
+</html> 
