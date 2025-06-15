@@ -21,7 +21,12 @@
       <div id="retina" class="grid grid-cols-5 gap-2 mt-2"></div>
     </div>
   </div>
-  <div class="mb-4">
+  <div class="mb-4 flex flex-col items-center">
+    <label class="flex items-center mb-2 select-none cursor-pointer">
+      <input type="checkbox" id="show-squares-toggle" class="mr-2 accent-blue-600">
+      <span>Show retina as squares</span>
+    </label>
+    <div id="squares-rep" class="mb-2 hidden"></div>
     <b>Predicted number:</b>
     <div id="numbers" class="flex gap-2 mt-2"></div>
   </div>
@@ -226,6 +231,7 @@
       log += `The predicted number is: ${predicted_number}`;
       document.getElementById('output').innerHTML = `<pre>${log}</pre>`;
       renderNumbers(predicted_number);
+      renderSquaresRep();
     }
 
     // Initial render
@@ -350,6 +356,33 @@
       runSimulation();
       renderRetina();
     };
+
+    function renderSquaresRep() {
+      const squaresDiv = document.getElementById('squares-rep');
+      if (!document.getElementById('show-squares-toggle').checked) {
+        squaresDiv.classList.add('hidden');
+        squaresDiv.innerHTML = '';
+        return;
+      }
+      squaresDiv.classList.remove('hidden');
+      let html = '<div class="grid grid-cols-5 gap-1">';
+      for (let i = 0; i < 25; i++) {
+        html += `<div class="w-6 h-6 rounded ${image[i] ? 'bg-blue-600' : 'bg-gray-200'} border border-gray-400"></div>`;
+      }
+      html += '</div>';
+      squaresDiv.innerHTML = html;
+    }
+    document.getElementById('show-squares-toggle').addEventListener('change', renderSquaresRep);
+    // Call renderSquaresRep after drawing, reset, and simulation
+    // Add to updateImageFromCanvas, reset, and runSimulation
+    const origUpdateImageFromCanvas = updateImageFromCanvas;
+    updateImageFromCanvas = function() { origUpdateImageFromCanvas(); renderSquaresRep(); };
+    const origRunSimulation = runSimulation;
+    runSimulation = function() { origRunSimulation(); renderSquaresRep(); };
+    const origResetBtn = document.getElementById('reset-btn').onclick;
+    document.getElementById('reset-btn').onclick = function() { origResetBtn && origResetBtn(); renderSquaresRep(); };
+    // Initial render
+    renderSquaresRep();
   </script>
 </body>
 </html> 
