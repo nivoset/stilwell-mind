@@ -140,10 +140,10 @@
     // Redraw all recorded lines and grid lines as needed
     function redrawCanvasWithGridOption() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGridLines();
       for (const seg of drawnLines) {
         drawLine(seg.x1, seg.y1, seg.x2, seg.y2, false);
       }
-      drawGridLines();
     }
 
     // Clear canvas and grid, and reset drawnLines
